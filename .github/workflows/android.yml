@@ -1,0 +1,39 @@
+name: Android APK
+on:
+  workflow_dispatch:
+  push:
+    tags: ['v*']
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    defaults: { run: { working-directory: app } }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: npm, cache-dependency-path: app/package-lock.json }
+      - uses: actions/setup-java@v4
+        with: { distribution: temurin, java-version: 21 }
+      - run: npm ci --legacy-peer-deps
+      - run: npx tsc --noEmit
+      - run: npx expo prebuild --platform android --no-install
+      - name: Signing key
+        env:
+          KEYSTORE_B64: ${{ secrets.QE_KEYSTORE_B64 }}
+          KEYSTORE_PW: ${{ secrets.QE_KEYSTORE_PASSWORD }}
+        run: |
+          if [ -n "$KEYSTORE_B64" ]; then
+            echo "$KEYSTORE_B64" | base64 -d > $HOME/qe-upload.p12
+            mkdir -p $HOME/.gradle
+            printf "QE_UPLOAD_STORE_FILE=$HOME/qe-upload.p12\nQE_UPLOAD_STORE_PASSWORD=$KEYSTORE_PW\nQE_UPLOAD_KEY_ALIAS=qe-upload\nQE_UPLOAD_KEY_PASSWORD=$KEYSTORE_PW\n" >> $HOME/.gradle/gradle.properties
+          fi
+      - run: cd android && ./gradlew assembleRelease --no-daemon -PreactNativeArchitectures=arm64-v8a,armeabi-v7a
+      - name: Name APK
+        run: |
+          V=$(node -p "require('./app.json').expo.version")
+          cp android/app/build/outputs/apk/release/app-release.apk "QE-Mobile-v$V.apk"
+          echo "APK=app/QE-Mobile-v$V.apk" >> $GITHUB_ENV
+      - uses: actions/upload-artifact@v4
+        with: { name: qe-mobile-apk, path: '${{ env.APK }}' }
+      - if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with: { files: '${{ env.APK }}' }
