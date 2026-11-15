@@ -2,7 +2,10 @@ name: Android APK
 on:
   workflow_dispatch:
   push:
-    tags: ['v*']
+    branches: [main]
+    paths: ['app/**', '.github/workflows/android.yml']
+permissions:
+  contents: write
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -32,8 +35,12 @@ jobs:
           V=$(node -p "require('./app.json').expo.version")
           cp android/app/build/outputs/apk/release/app-release.apk "QE-Mobile-v$V.apk"
           echo "APK=app/QE-Mobile-v$V.apk" >> $GITHUB_ENV
+          echo "VER=$V" >> $GITHUB_ENV
       - uses: actions/upload-artifact@v4
         with: { name: qe-mobile-apk, path: '${{ env.APK }}' }
-      - if: startsWith(github.ref, 'refs/tags/')
-        uses: softprops/action-gh-release@v2
-        with: { files: '${{ env.APK }}' }
+      - uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ env.VER }}
+          name: QE Mobile v${{ env.VER }}
+          files: ${{ env.APK }}
+          make_latest: true
