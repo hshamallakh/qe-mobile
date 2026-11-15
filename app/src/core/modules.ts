@@ -10,7 +10,7 @@ type IconName = ComponentProps<typeof Ionicons>['name'];
  * To add a module (e.g. Fleet, Purchase Orders, Visitor Log):
  *   1. add its screens under src/app/<id>/
  *   2. add an entry below
- *   3. enable it for the right roles in ERPNext ("QE Mobile Module" doctype)
+ *   3. enable it for the right roles in the QE ERP (Mobile → Modules); the server returns it in /me/bootstrap
  * Modules that only make sense on the web (e.g. Accounting setup) are simply not registered here.
  */
 export interface ModuleDef {

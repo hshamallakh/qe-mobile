@@ -73,7 +73,7 @@ export default function Tags() {
         <Field label="Name" placeholder="No. 8 – Main entrance" value={title} onChangeText={setTitle} />
         <Field label="Building" placeholder="8 Balfour Street" value={building} onChangeText={setBuilding} />
         <Button title="Create clock point" icon="add-circle-outline" onPress={create} loading={busy === 'create'} />
-        <Body sub style={{ fontSize: 13 }}>Who may clock in at each point, and which actions it allows, is set in ERPNext (QE Clock Point).</Body>
+        <Body sub style={{ fontSize: 13 }}>Who may clock in at each point, and which actions it allows, is set in the QE ERP web app (Attendance → Clock points).</Body>
       </Card>
       <Card>
         <Row title="Lock tags after writing" subtitle="Recommended for stickers in public areas. Cannot be undone." right={<Switch value={lock} onValueChange={setLock} />} />

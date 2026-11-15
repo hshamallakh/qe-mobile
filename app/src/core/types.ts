@@ -1,5 +1,5 @@
-// Shared data shapes between the app and the ERPNext "qe_mobile" server app.
-// The server app returns exactly these shapes (see server/qe_mobile/api.py).
+// Shared data shapes between the app and the QE ERP backend (docs/MOBILE-API.md).
+// The server app returns exactly these shapes (see docs/MOBILE-API.md).
 
 export type ClockMethod = 'nfc' | 'location' | 'wifi' | 'manual';
 export type ClockAction = 'IN' | 'OUT' | 'BREAK_START' | 'BREAK_END';

@@ -15,7 +15,7 @@ import { ApiError } from './errors';
 
 /**
  * Everything the app needs from the backend. Two implementations:
- *  - ErpApi: talks to ERPNext 16 + the qe_mobile server app
+ *  - ErpApi: talks to the QE ERP over the documented REST contract
  *  - DemoApi: an offline sandbox (also used by Apple / Google reviewers)
  * New ERP modules add methods here (or their own small client) — screens never call fetch directly.
  */
@@ -50,101 +50,105 @@ export interface DeviceInfo {
 
 export { ApiError };
 
-const M = 'qe_mobile.qe_mobile.api'; // server app python module
-
+/**
+ * REST contract with the QE ERP backend (see docs/MOBILE-API.md in the repo).
+ * Base: {server}/api/mobile/v1  ·  Auth: "Authorization: Bearer <device token>"
+ * Success: 2xx with JSON body (the payload itself). Error: non-2xx with {"error": {"code", "message"}}.
+ */
 export class ErpApi implements Api {
   readonly isDemo = false;
   constructor(private baseUrl: string, private token: string | null) {
     this.baseUrl = baseUrl.replace(/\/+$/, '');
   }
 
-  private async call<T>(method: string, args?: Record<string, unknown>, httpMethod: 'GET' | 'POST' = 'POST'): Promise<T> {
-    let url = `${this.baseUrl}/api/method/${method}`;
-    const headers: Record<string, string> = { Accept: 'application/json' };
-    if (this.token) headers['X-QE-Device-Token'] = this.token;
-    const init: RequestInit = { method: httpMethod, headers };
-    if (httpMethod === 'GET' && args) {
-      const qs = Object.entries(args)
-        .filter(([, v]) => v !== undefined && v !== null)
-        .map(([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(typeof v === 'object' ? JSON.stringify(v) : String(v))}`)
+  private async call<T>(path: string, init: { method?: 'GET' | 'POST' | 'DELETE'; query?: Record<string, unknown>; body?: unknown } = {}): Promise<T> {
+    let url = `${this.baseUrl}/api/mobile/v1${path}`;
+    if (init.query) {
+      const qs = Object.entries(init.query)
+        .filter(([, v]) => v !== undefined && v !== null && v !== '')
+        .map(([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(String(v))}`)
         .join('&');
       if (qs) url += `?${qs}`;
-    } else if (args) {
-      headers['Content-Type'] = 'application/json';
-      init.body = JSON.stringify(args);
     }
-
+    const headers: Record<string, string> = { Accept: 'application/json' };
+    if (this.token) headers.Authorization = `Bearer ${this.token}`;
+    const req: RequestInit = { method: init.method ?? (init.body !== undefined ? 'POST' : 'GET'), headers };
+    if (init.body !== undefined) {
+      headers['Content-Type'] = 'application/json';
+      req.body = JSON.stringify(init.body);
+    }
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), 20000);
     let res: Response;
     try {
-      res = await fetch(url, { ...init, signal: controller.signal });
-    } catch (e) {
+      res = await fetch(url, { ...req, signal: controller.signal });
+    } catch {
       throw new ApiError('Cannot reach the server. Check your connection.', 0, 'NETWORK');
     } finally {
       clearTimeout(timer);
     }
     let body: any = null;
     try {
-      body = await res.json();
+      body = res.status === 204 ? null : await res.json();
     } catch {
       /* non-JSON error page */
     }
     if (!res.ok) {
-      throw new ApiError(frappeErrorMessage(body) || `Server error (${res.status})`, res.status, body?.exc_type);
+      throw new ApiError(errorMessage(body) || `Server error (${res.status})`, res.status, body?.error?.code);
     }
-    return body?.message as T;
+    return body as T;
   }
 
   login(usr: string, pwd: string, device: DeviceInfo) {
-    return this.call<{ token: string }>(`${M}.auth.login`, { usr, pwd, ...device }).then((r) => r.token);
+    return this.call<{ token: string }>('/auth/login', { body: { username: usr, password: pwd, device } }).then((r) => r.token);
   }
   async logout() {
     try {
-      await this.call(`${M}.auth.logout`);
+      await this.call('/auth/logout', { method: 'POST', body: {} });
     } catch {
       /* token may already be revoked */
     }
   }
   bootstrap() {
-    return this.call<Bootstrap>(`${M}.core.bootstrap`, undefined, 'GET');
+    return this.call<Bootstrap>('/me/bootstrap');
   }
   clockState() {
-    return this.call<ClockState>(`${M}.attendance.state`, undefined, 'GET');
+    return this.call<ClockState>('/attendance/state');
   }
   clock(req: ClockRequest) {
-    return this.call<ClockEvent>(`${M}.attendance.clock`, { payload: req });
+    return this.call<ClockEvent>('/attendance/clock', { body: req });
   }
   myEvents(days: number) {
-    return this.call<ClockEvent[]>(`${M}.attendance.my_events`, { days }, 'GET');
+    return this.call<ClockEvent[]>('/attendance/events', { query: { days } });
   }
   leaveTypes() {
-    return this.call<LeaveType[]>(`${M}.timeoff.leave_types`, undefined, 'GET');
+    return this.call<LeaveType[]>('/timeoff/types');
   }
   myLeaves() {
-    return this.call<LeaveApplication[]>(`${M}.timeoff.my_leaves`, undefined, 'GET');
+    return this.call<LeaveApplication[]>('/timeoff/requests');
   }
   applyLeave(l: NewLeave) {
-    return this.call<LeaveApplication>(`${M}.timeoff.apply`, { payload: l });
+    return this.call<LeaveApplication>('/timeoff/requests', { body: l });
   }
   directory(search: string) {
-    return this.call<DirectoryEntry[]>(`${M}.directory.search`, { q: search }, 'GET');
+    return this.call<DirectoryEntry[]>('/directory', { query: { q: search } });
   }
   resolveScan(code: string, format: string) {
-    return this.call<ScanResult>(`${M}.scan.resolve`, { code, format });
+    return this.call<ScanResult>('/scan/resolve', { body: { code, format } });
   }
   clockPoints() {
-    return this.call<ClockPoint[]>(`${M}.attendance.clock_points`, undefined, 'GET');
+    return this.call<ClockPoint[]>('/admin/clock-points');
   }
   createClockPoint(title: string, building: string) {
-    return this.call<ClockPoint>(`${M}.attendance.create_clock_point`, { title, building });
+    return this.call<ClockPoint>('/admin/clock-points', { body: { title, building } });
   }
   verifyTag(url: string, uid?: string) {
-    return this.call<{ ok: boolean; clockPoint?: string; message: string }>(`${M}.attendance.verify_tag`, { url, uid });
+    return this.call<{ ok: boolean; clockPoint?: string; message: string }>('/admin/clock-points/verify', { body: { url, uid } });
   }
 }
 
-function frappeErrorMessage(body: any): string | null {
+function errorMessage(body: any): string | null {
+  if (body?.error?.message) return strip(String(body.error.message));
   if (!body) return null;
   if (body._server_messages) {
     try {

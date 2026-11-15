@@ -52,7 +52,7 @@ export default function History() {
           ))}
         </Card>
       ))}
-      <Body sub style={{ fontSize: 12 }}>Need a correction? Ask your manager to adjust it in ERPNext.</Body>
+      <Body sub style={{ fontSize: 12 }}>Need a correction? Ask your manager to adjust it in the QE ERP.</Body>
     </Screen>
   );
 }
